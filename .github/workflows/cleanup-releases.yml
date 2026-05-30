@@ -53,7 +53,11 @@ jobs:
         if: inputs.r2-prefix != '' || inputs.r2-atomic-prefix != ''
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y awscli jq
+          sudo apt-get install -y -qq unzip jq
+          curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip
+          unzip -q /tmp/awscliv2.zip -d /tmp
+          sudo /tmp/aws/install --update
+          aws --version
 
       - name: Clean versioned GitHub Releases (v*)
         env:
