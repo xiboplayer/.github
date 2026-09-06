@@ -10,6 +10,10 @@ on:
         type: string
         default: ''
         description: 'CMS URL. If empty, spins up Docker Compose stack.'
+      player-url:
+        type: string
+        default: ''
+        description: 'URL of a running player for the Playwright e2e specs. Empty (the default) skips them — no CI job serves the PWA yet, and the specs also need a display registered and authorised against the CMS.'
       use-gh-packages:
         type: boolean
         default: false
@@ -75,18 +79,21 @@ jobs:
           TEST_DISPLAY_GROUP: CI Test Displays
 
       - name: Build PWA for e2e
+        if: inputs.player-url != ''
         run: pnpm --filter @xiboplayer/pwa run build
 
       - name: Install Playwright browsers
+        if: inputs.player-url != ''
         run: pnpm --filter @xiboplayer/cms-testing exec playwright install --with-deps chromium
 
       - name: Run CMS e2e tests
+        if: inputs.player-url != ''
         run: pnpm --filter @xiboplayer/cms-testing exec playwright test
         env:
           CMS_URL: ${{ inputs.cms-url || 'http://localhost:18080' }}
           CLIENT_ID: ${{ secrets.CMS_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CMS_CLIENT_SECRET }}
-          PLAYER_URL: http://localhost:18765/player/
+          PLAYER_URL: ${{ inputs.player-url }}
           HEADLESS: true
 
       - name: Teardown Docker CMS
