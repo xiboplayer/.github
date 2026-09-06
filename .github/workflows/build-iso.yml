@@ -73,6 +73,13 @@ jobs:
     if: inputs.skip-preflight != true
     runs-on: ubuntu-latest
     needs: [detect-version]
+    # Query the repository with dnf rather than curl. dl.xiboplayer.org
+    # answers 403 to curl from GitHub runners (see xiboplayer/.github#59)
+    # while serving dnf normally, and dnf is also how the ISO and image
+    # builds below actually consume these packages — so this checks the
+    # thing that has to work, through the client that has to work.
+    container:
+      image: fedora:43
     steps:
       - name: Wait for ${{ inputs.package-name }} ${{ needs.detect-version.outputs.version }} in repo
         run: |
@@ -80,81 +87,63 @@ jobs:
           EXPECTED="${{ needs.detect-version.outputs.version }}"
           PLAYERS="xiboplayer-electron xiboplayer-chromium"
           OTHER="arexibo xiboplayer-release xiboplayer-kiosk"
+          # noarch packages are mirrored into the per-arch directories, so
+          # one arch sees every package.
+          REPO_URL="https://dl.xiboplayer.org/rpm/fedora/43/x86_64/"
 
-          # Wait up to 20 min for the repo to update (RPM + update-repos + propagation)
+          query() {
+            dnf -q --nogpgcheck --setopt=metadata_expire=0 --refresh \
+              --repofrompath "xp,$REPO_URL" --repo xp \
+              repoquery --qf '%{name} %{version}-%{release}' "$@" 2>/dev/null
+          }
+
+          # Wait up to 20 min for the repo to update (RPM build + update-repos)
+          CUR=""
           for attempt in $(seq 1 80); do
-            # Report the status instead of "cannot reach": curl -sf hides
-            # whether this is a 404 (index not regenerated yet), a CDN
-            # refusal, or a connection that never completed. Identify the
-            # client too — dnf reaches this host from the same runners while
-            # a default curl request does not.
-            RESP=$(curl -sS -w '\n%{http_code}' --max-time 30 \
-              -A 'xiboplayer-ci (+https://github.com/xiboplayer)' \
-              "https://dl.xiboplayer.org/rpm/packages.json" 2>&1) || RESP=$'\ncurl-failed'
-            HTTP_CODE=$(printf '%s' "$RESP" | tail -n1)
-            PKGS=$(printf '%s' "$RESP" | sed '$d')
-
-            if [ "$HTTP_CODE" != "200" ]; then
-              echo "[$attempt] packages.json -> $HTTP_CODE, retry in 15s..."
-              sleep 15
-              continue
-            fi
-
-            CUR=$(echo "$PKGS" | python3 -c "
-          import sys, json
-          pkgs = json.load(sys.stdin)
-          for p in pkgs:
-              if p['name'] == '$PACKAGE':
-                  print(p['version'].split('-')[0])
-                  break
-          ")
-
+            CUR=$(query "$PACKAGE" | awk 'NR==1{print $2}' | cut -d- -f1)
             if [ "$CUR" = "$EXPECTED" ]; then
               echo "[$attempt] $PACKAGE $EXPECTED is in the repo"
               break
             fi
-            echo "[$attempt] $PACKAGE in repo: '$CUR', expected: '$EXPECTED' — retry in 15s"
+            echo "[$attempt] $PACKAGE in repo: '${CUR:-not found}', expected: '$EXPECTED' — retry in 15s"
             sleep 15
           done
 
           if [ "$CUR" != "$EXPECTED" ]; then
-            echo "ERROR: $PACKAGE $EXPECTED did not appear in repo after 20 minutes"
+            echo "::error::$PACKAGE $EXPECTED did not appear in the repo after 20 minutes (last saw: '${CUR:-not found}')"
             exit 1
           fi
 
           echo ""
           echo "=== Package versions in repo ==="
-          echo "$PKGS" | python3 -c "
-          import sys, json
-          pkgs = json.load(sys.stdin)
-          seen = {}
-          for p in pkgs:
-              if p['name'] not in seen:
-                  seen[p['name']] = p['version']
-                  print(f\"  {p['name']} {p['version']} ({p['arch']})\")
+          missing=""
+          for name in $PLAYERS $OTHER; do
+            found=$(query "$name" | awk 'NR==1{print $2}')
+            if [ -z "$found" ]; then
+              missing="$missing $name"
+              echo "  $name MISSING"
+            else
+              echo "  $name $found"
+            fi
+          done
 
-          players = '$PLAYERS'.split()
-          other = '$OTHER'.split()
-          all_required = players + other
+          if [ -n "$missing" ]; then
+            echo "::error::Missing packages:$missing"
+            exit 1
+          fi
 
-          missing = [n for n in all_required if n not in seen]
-          if missing:
-              print(f\"\\nERROR: Missing packages: {', '.join(missing)}\")
-              sys.exit(1)
+          # Both players ship from the same SDK release, so a mismatch means
+          # one of the two builds did not publish.
+          player_versions=$(for name in $PLAYERS; do
+            query "$name" | awk 'NR==1{print $2}' | cut -d- -f1
+          done | sort -u)
+          if [ "$(echo "$player_versions" | wc -l)" -gt 1 ]; then
+            echo "::error::Player version mismatch: $(echo $player_versions | tr '\n' ' ')"
+            exit 1
+          fi
 
-          def base_version(v):
-              return v.split('-')[0]
-
-          player_versions = {n: base_version(seen[n]) for n in players}
-          versions = set(player_versions.values())
-          if len(versions) > 1:
-              print(f\"\\nERROR: Player version mismatch:\")
-              for n, v in player_versions.items():
-                  print(f\"  {n}: {v}\")
-              sys.exit(1)
-
-          print(f\"\\nAll {len(all_required)} packages present, players at version {versions.pop()}\")
-          "
+          echo ""
+          echo "All packages present, players at version $player_versions"
 
   # ── Version detection (single source of truth) ───────────────────────
   detect-version:
