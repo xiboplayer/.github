@@ -83,11 +83,22 @@ jobs:
 
           # Wait up to 20 min for the repo to update (RPM + update-repos + propagation)
           for attempt in $(seq 1 80); do
-            PKGS=$(curl -sf "https://dl.xiboplayer.org/rpm/packages.json" 2>/dev/null) || {
-              echo "[$attempt] Cannot reach packages.json, retry in 15s..."
+            # Report the status instead of "cannot reach": curl -sf hides
+            # whether this is a 404 (index not regenerated yet), a CDN
+            # refusal, or a connection that never completed. Identify the
+            # client too — dnf reaches this host from the same runners while
+            # a default curl request does not.
+            RESP=$(curl -sS -w '\n%{http_code}' --max-time 30 \
+              -A 'xiboplayer-ci (+https://github.com/xiboplayer)' \
+              "https://dl.xiboplayer.org/rpm/packages.json" 2>&1) || RESP=$'\ncurl-failed'
+            HTTP_CODE=$(printf '%s' "$RESP" | tail -n1)
+            PKGS=$(printf '%s' "$RESP" | sed '$d')
+
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "[$attempt] packages.json -> $HTTP_CODE, retry in 15s..."
               sleep 15
               continue
-            }
+            fi
 
             CUR=$(echo "$PKGS" | python3 -c "
           import sys, json
