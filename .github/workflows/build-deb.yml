@@ -286,6 +286,12 @@ jobs:
   upload:
     name: Upload to R2
     needs: sign
+    # Gate the upload, not just the notify below: an ungated upload
+    # overwrites already-published packages with a fresh rebuild on
+    # every branch push. RPMs are not reproducible, so the checksum
+    # changes while the repository metadata still lists the old one,
+    # and dnf then fails with "checksum doesn't match" for everyone.
+    if: inputs.publish-to-repo
     runs-on: ubuntu-latest
 
     steps:
