@@ -70,12 +70,17 @@ jobs:
           CLIENT_ID: ${{ secrets.CMS_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CMS_CLIENT_SECRET }}
 
+      # `pnpm --filter <pkg> vitest run` looks for a script named "vitest",
+      # which cms-testing does not define, so this never ran the suite —
+      # it failed with ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL. `exec` runs the
+      # binary. CLIENT_ID/SECRET prefer what cms-seed.sh generated: a CMS
+      # 4.x client gets a server-side id and secret that cannot be chosen.
       - name: Run CMS API integration tests
-        run: pnpm --filter @xiboplayer/cms-testing vitest run
+        run: pnpm --filter @xiboplayer/cms-testing exec vitest run
         env:
           CMS_URL: ${{ inputs.cms-url || 'http://localhost:18080' }}
-          CLIENT_ID: ${{ secrets.CMS_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CMS_CLIENT_SECRET }}
+          CLIENT_ID: ${{ env.SEEDED_CLIENT_ID || secrets.CMS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ env.SEEDED_CLIENT_SECRET || secrets.CMS_CLIENT_SECRET }}
           TEST_DISPLAY_GROUP: CI Test Displays
 
       - name: Build PWA for e2e
@@ -91,8 +96,8 @@ jobs:
         run: pnpm --filter @xiboplayer/cms-testing exec playwright test
         env:
           CMS_URL: ${{ inputs.cms-url || 'http://localhost:18080' }}
-          CLIENT_ID: ${{ secrets.CMS_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CMS_CLIENT_SECRET }}
+          CLIENT_ID: ${{ env.SEEDED_CLIENT_ID || secrets.CMS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ env.SEEDED_CLIENT_SECRET || secrets.CMS_CLIENT_SECRET }}
           PLAYER_URL: ${{ inputs.player-url }}
           HEADLESS: true
 
