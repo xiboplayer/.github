@@ -1,7 +1,7 @@
-#version=F43
+#version=F44
 # Xibo Player Kiosk Kickstart Template
 # ======================================
-# Automated Fedora 43 installation for Xibo digital signage players
+# Automated Fedora 44 installation for Xibo digital signage players
 #
 # Usage:
 #   1. Customize this file for your player (package names, repository URLs)
@@ -82,8 +82,8 @@ NetworkManager-wifi
 %post --erroronfail
 # Add RPMFusion repos
 dnf install -y \
-  https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-43.noarch.rpm \
-  https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-43.noarch.rpm
+  https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-44.noarch.rpm \
+  https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-44.noarch.rpm
 
 # Swap ffmpeg-free for ffmpeg (full codec support)
 dnf swap -y ffmpeg-free ffmpeg --allowerasing || true
