@@ -39,12 +39,12 @@ on:
         description: 'Bind @xiboplayer scope to GitHub Packages npm and authenticate via NODE_AUTH_TOKEN. Requires the consumer to pass `secrets: inherit` so XIBO_PLAYERS_READ_TOKEN (org-level or repo-level secret) is available. Default false keeps the legacy public-npm fetch path; per-consumer opt-in via this flag.'
       fedora-version:
         type: string
-        default: '43'
+        default: '44'
         description: 'Fedora version for single-version builds (use fedora-matrix for multi-version)'
       fedora-matrix:
         type: string
         default: ''
-        description: 'JSON array of Fedora versions (e.g. ["43", "44"]). Overrides fedora-version.'
+        description: 'JSON array of Fedora versions (e.g. ["44", "45"]). Overrides fedora-version.'
       arch-matrix:
         type: string
         default: '["x86_64"]'
@@ -82,7 +82,7 @@ jobs:
       image: fedora:${{ matrix.fedora }}
     strategy:
       matrix:
-        fedora: ${{ fromJSON(inputs.fedora-matrix || format('["{0}"]', inputs.fedora-version || '43')) }}
+        fedora: ${{ fromJSON(inputs.fedora-matrix || format('["{0}"]', inputs.fedora-version || '44')) }}
         arch: ${{ fromJSON(inputs.arch-matrix) }}
 
     steps:
@@ -287,7 +287,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     container:
-      image: fedora:${{ inputs.fedora-version || '43' }}
+      image: fedora:${{ inputs.fedora-version || '44' }}
 
     steps:
       - name: Download all RPM artifacts
@@ -413,7 +413,7 @@ jobs:
     if: inputs.publish-to-repo
     runs-on: ubuntu-latest
     container:
-      image: fedora:43
+      image: fedora:44
 
     steps:
       - name: Install tools
@@ -434,23 +434,20 @@ jobs:
           PACKAGE: ${{ inputs.package-name }}
         run: |
           BUCKET="${R2_BUCKET}"
-          FEDORA_VERS="43 44"
 
           for file in rpms/*.rpm; do
             NAME=$(basename "$file")
             [[ "$NAME" == RPM-GPG-KEY-* ]] && continue
 
             # Filenames are standard RPM names emitted by rpmbuild, e.g.
-            #   xiboplayer-electron-0.7.22-1.fc43.x86_64.rpm
-            #   xiboplayer-electron-0.7.22-1.fc44.aarch64.rpm
-            # Parse the Fedora version from the %{dist} segment (.fcNN.).
+            #   xiboplayer-electron-0.7.22-1.fc44.x86_64.rpm
+            #   xiboplayer-electron-0.7.22-1.fc45.aarch64.rpm
+            # Parse the Fedora version from the %{dist} segment (.fcNN.),
+            # so a new release in the caller's fedora-matrix needs no edit here.
             fc_ver=""
-            for v in $FEDORA_VERS; do
-              if [[ "$NAME" == *".fc${v}."* ]]; then
-                fc_ver="$v"
-                break
-              fi
-            done
+            if [[ "$NAME" =~ \.fc([0-9]+)\. ]]; then
+              fc_ver="${BASH_REMATCH[1]}"
+            fi
             if [ -z "$fc_ver" ]; then
               echo "  SKIP: cannot determine Fedora version from $NAME"
               continue
