@@ -5,7 +5,7 @@
 
 [Distribution]
 Distribution=fedora
-Release=43
+Release=44
 
 [Output]
 Format=disk

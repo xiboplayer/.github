@@ -34,6 +34,14 @@ on:
       default-version:
         type: string
         default: '0.2.0'
+      fedora-version:
+        type: string
+        default: '44'
+        description: 'Fedora release the images are built from: build containers, netinst ISO, RPM Fusion and the xiboplayer repo path. Must match the caller''s kickstart and mkosi.conf.'
+      netinst-respin:
+        type: string
+        default: '1.7'
+        description: 'Compose suffix of the Fedora Everything netinst ISO for fedora-version (Fedora-Everything-netinst-<arch>-<fedora-version>-<respin>.iso; 1.7 for Fedora 44).'
       # ── Customization + test-iteration inputs ──────────────────────────
       # All default to empty/false so existing callers keep working
       # byte-for-byte. Set from test-image workflows to override grub menu
@@ -54,7 +62,7 @@ on:
       iso-grub-replacements:
         type: string
         default: ''
-        description: 'Multiline text replacements applied by mkksiso -R. One pair per line, pipe-separated: FROM|TO. Example: "Install Fedora 43|Install xiboplayer kiosk". mkksiso applies each pair to /EFI/BOOT/grub.cfg, /EFI/BOOT/BOOT.conf, /boot/grub2/grub.cfg, /boot/grub/grub.cfg, AND /isolinux/isolinux.cfg — single point of configuration across all boot firmware paths. No xorriso post-patch needed; mkksiso internally uses `-boot_image any replay` correctly.'
+        description: 'Multiline text replacements applied by mkksiso -R. One pair per line, pipe-separated: FROM|TO. Example: "Install Fedora 44|Install xiboplayer kiosk". mkksiso applies each pair to /EFI/BOOT/grub.cfg, /EFI/BOOT/BOOT.conf, /boot/grub2/grub.cfg, /boot/grub/grub.cfg, AND /isolinux/isolinux.cfg — single point of configuration across all boot firmware paths. No xorriso post-patch needed; mkksiso internally uses `-boot_image any replay` correctly.'
       skip-preflight:
         type: boolean
         default: false
@@ -79,7 +87,7 @@ jobs:
     # builds below actually consume these packages — so this checks the
     # thing that has to work, through the client that has to work.
     container:
-      image: fedora:43
+      image: fedora:${{ inputs.fedora-version }}
     steps:
       - name: Wait for ${{ inputs.package-name }} ${{ needs.detect-version.outputs.version }} in repo
         run: |
@@ -89,7 +97,7 @@ jobs:
           OTHER="arexibo xiboplayer-release xiboplayer-kiosk"
           # noarch packages are mirrored into the per-arch directories, so
           # one arch sees every package.
-          REPO_URL="https://dl.xiboplayer.org/rpm/fedora/43/x86_64/"
+          REPO_URL="https://dl.xiboplayer.org/rpm/fedora/${{ inputs.fedora-version }}/x86_64/"
 
           query() {
             dnf -q --nogpgcheck --setopt=metadata_expire=0 --refresh \
@@ -201,7 +209,7 @@ jobs:
     name: Disk Images (${{ matrix.arch }})
     runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     container:
-      image: fedora:43
+      image: fedora:${{ inputs.fedora-version }}
       options: --privileged
     strategy:
       fail-fast: false
@@ -349,7 +357,7 @@ jobs:
     name: Offline ISO (${{ matrix.arch }})
     runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     container:
-      image: fedora:43
+      image: fedora:${{ inputs.fedora-version }}
       options: --privileged
     strategy:
       fail-fast: false
@@ -409,8 +417,8 @@ jobs:
           }
 
           retry_if_unreachable dnf install -y \
-            https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-43.noarch.rpm \
-            https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-43.noarch.rpm
+            https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${{ inputs.fedora-version }}.noarch.rpm \
+            https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${{ inputs.fedora-version }}.noarch.rpm
 
       - name: Download all packages for offline install
         run: |
@@ -458,13 +466,13 @@ jobs:
         run: |
           # Use netinst as base (~700 MB) instead of Workstation Live (~2.2 GB)
           # The netinst has Anaconda installer; our local repo provides all packages
-          ISO_NAME="Fedora-Everything-netinst-${ARCH}-43-1.6.iso"
+          ISO_NAME="Fedora-Everything-netinst-${ARCH}-${{ inputs.fedora-version }}-${{ inputs.netinst-respin }}.iso"
 
           # curl with retry — Fedora mirrors are generally reliable but
           # CDN edge nodes occasionally return transient errors.
           curl --retry 3 --retry-delay 15 --retry-connrefused \
             -L -o /tmp/fedora-netinst.iso \
-            "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Everything/${ARCH}/iso/${ISO_NAME}"
+            "https://download.fedoraproject.org/pub/fedora/linux/releases/${{ inputs.fedora-version }}/Everything/${ARCH}/iso/${ISO_NAME}"
 
       - name: Build self-contained offline ISO
         env:
@@ -567,7 +575,7 @@ jobs:
     name: Netinstall ISO (${{ matrix.arch }})
     runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     container:
-      image: fedora:43
+      image: fedora:${{ inputs.fedora-version }}
       options: --privileged
     strategy:
       fail-fast: false
@@ -589,7 +597,7 @@ jobs:
           ARCH: ${{ matrix.arch }}
         run: |
           curl -L -o /tmp/fedora-netinst.iso \
-            "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Everything/${ARCH}/iso/Fedora-Everything-netinst-${ARCH}-43-1.6.iso"
+            "https://download.fedoraproject.org/pub/fedora/linux/releases/${{ inputs.fedora-version }}/Everything/${ARCH}/iso/Fedora-Everything-netinst-${ARCH}-${{ inputs.fedora-version }}-${{ inputs.netinst-respin }}.iso"
 
       - name: Validate kickstart
         run: |
